@@ -29,8 +29,8 @@ type PrometheusPump struct {
 
 // PrometheusConf defines prometheus specific options.
 type PrometheusConf struct {
-	Addr string `mapstructure:"listen_address"`
-	Path string `mapstructure:"path"`
+	Addr string `mapstructure:"listen_address"` // 监听地址
+	Path string `mapstructure:"path"`           // 路径url，默认是 "/metrics"
 }
 
 // New create a prometheus pump instance.
@@ -43,7 +43,7 @@ func (p *PrometheusPump) New() Pump {
 		},
 		[]string{"code", "username"},
 	)
-
+	// 使用prometheus.MustRegister是将数据直接注册到默认注册表Default Registry
 	prometheus.MustRegister(newPump.TotalStatusMetrics)
 
 	return &newPump
@@ -87,11 +87,11 @@ func (p *PrometheusPump) WriteData(ctx context.Context, data []interface{}) erro
 
 	for _, item := range data {
 		record, _ := item.(analytics.AnalyticsRecord)
-		code := "0"
+		code := "0" // code 代表是否授权成功
 		if record.Effect != ladon.AllowAccess {
 			code = "1"
 		}
-
+		// 只将是否授权成功的 code 和 用户名存入后端
 		p.TotalStatusMetrics.WithLabelValues(code, record.Username).Inc()
 	}
 

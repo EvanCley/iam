@@ -39,9 +39,9 @@ const (
 
 // MongoPump defines a mongo pump with mongo specific options and common options.
 type MongoPump struct {
-	dbSession *mgo.Session
-	dbConf    *MongoConf
-	CommonPumpConfig
+	dbSession        *mgo.Session // 数据库会话
+	dbConf           *MongoConf   // 数据库特殊选项
+	CommonPumpConfig              // 连接 mongodb 时的基本选项
 }
 
 var mongoPumpPrefix = "PMP_MONGO"
@@ -239,7 +239,7 @@ func (m *MongoPump) GetName() string {
 // Init initialize the mongo pump instance.
 func (m *MongoPump) Init(config interface{}) error {
 	m.dbConf = &MongoConf{}
-	err := mapstructure.Decode(config, &m.dbConf)
+	err := mapstructure.Decode(config, &m.dbConf) // 将 map 解析到结构体中
 	if err == nil {
 		err = mapstructure.Decode(config, &m.dbConf.BaseMongoConf)
 		log.Info("Init", log.String("url", m.dbConf.MongoURL), log.String("collection_name", m.dbConf.CollectionName))
@@ -252,7 +252,7 @@ func (m *MongoPump) Init(config interface{}) error {
 		log.Fatalf("Failed to decode configuration: %s", err.Error())
 	}
 
-	overrideErr := envconfig.Process(mongoPumpPrefix, m.dbConf)
+	overrideErr := envconfig.Process(mongoPumpPrefix, m.dbConf) // 处理环境变量
 	if overrideErr != nil {
 		log.Errorf("Failed to process environment variables for mongo pump: %s", overrideErr.Error())
 	}
@@ -267,11 +267,11 @@ func (m *MongoPump) Init(config interface{}) error {
 		m.dbConf.MaxDocumentSizeBytes = 10 * MiB
 	}
 
-	m.connect()
+	m.connect() // 进行数据库连接
 
-	m.capCollection()
+	m.capCollection() // 固定集合，对标MySQL中的表
 
-	indexCreateErr := m.ensureIndexes()
+	indexCreateErr := m.ensureIndexes() // 创建索引
 	if indexCreateErr != nil {
 		log.Error(indexCreateErr.Error())
 	}
@@ -283,15 +283,15 @@ func (m *MongoPump) Init(config interface{}) error {
 }
 
 func (m *MongoPump) capCollection() (ok bool) {
-	colName := m.dbConf.CollectionName
-	colCapMaxSizeBytes := m.dbConf.CollectionCapMaxSizeBytes
-	colCapEnable := m.dbConf.CollectionCapEnable
+	colName := m.dbConf.CollectionName                       // 集合名
+	colCapMaxSizeBytes := m.dbConf.CollectionCapMaxSizeBytes // 集合最大 Size，默认5 GiB
+	colCapEnable := m.dbConf.CollectionCapEnable             // 当前集合是否可用
 
 	if !colCapEnable {
 		return false
 	}
 
-	exists, err := m.collectionExists(colName)
+	exists, err := m.collectionExists(colName) // 检查集合是否已经存在了
 	if err != nil {
 		log.Errorf("Unable to determine if collection (%s) exists. Not capping collection: %s", colName, err.Error())
 
@@ -319,7 +319,7 @@ func (m *MongoPump) capCollection() (ok bool) {
 
 	sess := m.dbSession.Copy()
 	defer sess.Close()
-
+	// 创建一个集合
 	err = m.dbSession.DB("").C(colName).Create(&mgo.CollectionInfo{Capped: true, MaxBytes: colCapMaxSizeBytes})
 	if err != nil {
 		log.Errorf("Unable to create capped collection for (%s). %s", colName, err.Error())
@@ -361,7 +361,7 @@ func (m *MongoPump) ensureIndexes() error {
 
 	c := sess.DB("").C(m.dbConf.CollectionName)
 
-	orgIndex := mgo.Index{
+	orgIndex := mgo.Index{ // 原始id 索引
 		Key:        []string{"orgid"},
 		Background: m.dbConf.MongoDBType == StandardMongo,
 	}
@@ -371,7 +371,7 @@ func (m *MongoPump) ensureIndexes() error {
 		return errors.Wrap(err, "failed to ensures an index with the given key exists")
 	}
 
-	apiIndex := mgo.Index{
+	apiIndex := mgo.Index{ // APIid 索引
 		Key:        []string{"apiid"},
 		Background: m.dbConf.MongoDBType == StandardMongo,
 	}
@@ -381,7 +381,7 @@ func (m *MongoPump) ensureIndexes() error {
 		return errors.Wrap(err, "failed to ensures an index with the given key exists")
 	}
 
-	logBrowserIndex := mgo.Index{
+	logBrowserIndex := mgo.Index{ // 日志浏览索引
 		Name:       "logBrowserIndex",
 		Key:        []string{"-timestamp", "orgid", "apiid", "apikey", "responsecode"},
 		Background: m.dbConf.MongoDBType == StandardMongo,
@@ -433,7 +433,7 @@ func (m *MongoPump) WriteData(ctx context.Context, data []interface{}) error {
 	}
 
 	for _, dataSet := range m.AccumulateSet(data) {
-		go func(dataSet []interface{}) {
+		go func(dataSet []interface{}) { // 开启多个协程同时写入
 			sess := m.dbSession.Copy()
 			defer sess.Close()
 
